@@ -37,4 +37,38 @@ print(transactions)
 
 # 5. Chatgpt solution
 transactions[:, 1] *= 1.1
-print()
+print(transactions)
+
+
+# 2nd exercise
+
+customers = np.array([
+    [25, 30000],
+    [40, 60000],
+    [35, 45000],
+    [50, 80000]
+], dtype=float)
+
+# 1. Shape
+print(customers.shape)
+
+# 2. Mean of each feature
+means = customers.mean(axis=0)
+print(means)
+
+# 3. Centre each feature
+centered_customers = customers - means
+print(centered_customers)
+
+# 4. Standard deviation of each feature
+stds = customers.std(axis=0)
+print(stds)
+
+# 5. Standardise features
+standardised_customers = (customers - means) / stds
+print(standardised_customers)
+
+# Bonus: matrix multiplication
+weights = np.array([0.3, 0.7])
+predictions = customers @ weights
+print(predictions)
