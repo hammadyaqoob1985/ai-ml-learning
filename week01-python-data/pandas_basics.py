@@ -73,3 +73,43 @@ print(customers)
 # salary > £70,000
 
 print(customers[(customers["country"] == "UK") | (customers["salary"] > 70000)])
+
+#1. What is the average salary by country?
+print(customers.groupby("country")["salary"].mean())
+
+#2. What is the maximum age in each country?
+
+print(customers.groupby("country")["age"].max())
+
+#3. How many customers are there in each country?
+print(customers.groupby("country").size())
+
+#What is the average salary of active vs inactive customers?
+print(customers.groupby("active")["salary"].mean())
+
+#5. For each country, return the minimum, maximum and mean salary.
+print(customers.groupby("country")["salary"].agg(["min", "max", "mean"]))
+
+#6. Sort all customers by salary from highest to lowest.
+print(customers.sort_values(by="salary", ascending=False))
+
+#7. Find the three highest-paid customers.
+print(customers.sort_values(by="salary", ascending=False).head(3))
+
+#Challenge
+
+# Produce a summary grouped by country containing:
+#
+# average_salary   max_salary   average_age   customer_count
+# France
+# Germany
+# UK
+
+summary = customers.groupby("country").agg(
+    average_salary=("salary", "mean"),
+    max_salary=("salary", "max"),
+    average_age=("age", "mean"),
+    customer_count=("customer_id", "count")
+)
+
+print(summary)
