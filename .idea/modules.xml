@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/ai-ml-learning.iml" filepath="$PROJECT_DIR$/ai-ml-learning.iml" />
+      <module fileurl="file://$PROJECT_DIR$/week01-python-data/project/project.iml" filepath="$PROJECT_DIR$/week01-python-data/project/project.iml" />
       <module fileurl="file://$PROJECT_DIR$/week01-python-data/week01-python-data.iml" filepath="$PROJECT_DIR$/week01-python-data/week01-python-data.iml" />
     </modules>
   </component>
