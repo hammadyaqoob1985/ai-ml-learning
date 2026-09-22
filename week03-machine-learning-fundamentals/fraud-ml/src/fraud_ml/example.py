@@ -7,7 +7,12 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import precision_recall_curve
+from sklearn.dummy import DummyClassifier
+from sklearn.tree import DecisionTreeClassifier
 from numpy import array
+
+from fraud_ml.generate_data import generate_fraud_data
 
 df = pd.DataFrame(
     {
@@ -437,3 +442,570 @@ print("F1:", f1_score(y_test, predictions))
 #
 # does the StandardScaler learn a new mean and standard deviation from X_test, or does it use what it learned from X_train? Why?
 # It uses what it learned from X_train. This is because the StandardScaler is part of the pipeline, and during training (fit), it calculates the mean and standard deviation from the training data. When making predictions, it applies the same transformation to the test data using the statistics learned from the training data to ensure consistency and avoid data leakage.
+
+df = generate_fraud_data()
+
+print(df.head())
+print()
+print(df.shape)
+
+print("\nFraud counts:")
+print(df["fraud"].value_counts())
+
+print("\nFraud rate:")
+print(df["fraud"].mean())
+
+print("\nFraud rate by international:")
+print(
+    df.groupby("international")["fraud"].mean()
+)
+
+print("\nFraud rate by transaction type:")
+print(
+    df.groupby("transaction_type")["fraud"].mean()
+)
+
+print("\nFraud rate by country:")
+print(
+    df.groupby("country")["fraud"].mean()
+)
+
+# Based purely on this dataset, which features appear to have a relationship with fraud, and which appear less useful?
+# Expected signal
+#
+# international       → strong
+# transaction_type    → useful
+# amount              → useful
+# country             → little/none
+# age                 → little/none
+
+categorical_features = [
+    "country",
+    "transaction_type",
+]
+
+numerical_features = [
+    "amount",
+    "age",
+]
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        (
+            "categorical",
+            OneHotEncoder(
+                handle_unknown="ignore"
+            ),
+            categorical_features,
+        ),
+        (
+            "numerical",
+            StandardScaler(),
+            numerical_features,
+        ),
+    ],
+    remainder="passthrough",
+)
+
+X = df[
+    [
+        "amount",
+        "age",
+        "international",
+        "transaction_type",
+        "country",
+    ]
+]
+
+y = df["fraud"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y,
+)
+
+model = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        ("classifier", LogisticRegression()),
+    ]
+)
+
+model.fit(X_train, y_train)
+
+predictions = model.predict(X_test)
+
+print("Confusion matrix:")
+print(confusion_matrix(y_test, predictions))
+
+print(
+    "Accuracy:",
+    accuracy_score(y_test, predictions)
+)
+
+print(
+    "Precision:",
+    precision_score(
+        y_test,
+        predictions,
+        zero_division=0,
+    )
+)
+
+print(
+    "Recall:",
+    recall_score(y_test, predictions),
+)
+
+print(
+    "F1:",
+    f1_score(y_test, predictions),
+)
+
+model_balanced = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        (
+            "classifier",
+            LogisticRegression(
+                class_weight="balanced"
+            ),
+        ),
+    ]
+)
+
+model_balanced.fit(X_train, y_train)
+
+balanced_predictions = model_balanced.predict(X_test)
+
+print("Confusion matrix:")
+print(
+    confusion_matrix(
+        y_test,
+        balanced_predictions
+    )
+)
+
+print(
+    "Accuracy:",
+    accuracy_score(
+        y_test,
+        balanced_predictions
+    )
+)
+
+print(
+    "Precision:",
+    precision_score(
+        y_test,
+        balanced_predictions,
+        zero_division=0,
+    )
+)
+
+print(
+    "Recall:",
+    recall_score(
+        y_test,
+        balanced_predictions
+    )
+)
+
+print(
+    "F1:",
+    f1_score(
+        y_test,
+        balanced_predictions
+    )
+)
+
+fraud_probabilities = model_balanced.predict_proba(X_test)[:, 1]
+
+thresholds = [0.3, 0.5, 0.7]
+
+for threshold in thresholds:
+    predictions = fraud_probabilities >= threshold
+
+    print(f"\nThreshold: {threshold}")
+
+    print(
+        "Precision:",
+        precision_score(
+            y_test,
+            predictions,
+            zero_division=0
+        )
+    )
+
+    print(
+        "Recall:",
+        recall_score(
+            y_test,
+            predictions
+        )
+    )
+
+    print(
+        "F1:",
+        f1_score(
+            y_test,
+            predictions
+        )
+    )
+
+    print(
+        "Confusion matrix:"
+    )
+
+    print(
+        confusion_matrix(
+            y_test,
+            predictions
+        )
+    )
+
+precision_values, recall_values, thresholds = precision_recall_curve(
+        y_test,
+        fraud_probabilities
+)
+
+print("Number of thresholds:", len(thresholds))
+print("Number of precision values:", len(precision_values))
+print("Number of recall values:", len(recall_values))
+f1_values = (
+        2
+        * precision_values[:-1]
+        * recall_values[:-1]
+        / (
+                precision_values[:-1]
+                + recall_values[:-1]
+                + 1e-10
+        )
+)
+
+best_index = np.argmax(f1_values)
+
+print("Best threshold:", thresholds[best_index])
+print("Precision:", precision_values[best_index])
+print("Recall:", recall_values[best_index])
+print("F1:", f1_values[best_index])
+
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X,
+    y,
+    test_size=0.30,
+    random_state=42,
+    stratify=y,
+)
+
+X_validation, X_test, y_validation, y_test = train_test_split(
+    X_temp,
+    y_temp,
+    test_size=0.50,
+    random_state=42,
+    stratify=y_temp,
+)
+
+print("Training:", X_train.shape, y_train.shape)
+print("Validation:", X_validation.shape, y_validation.shape)
+print("Test:", X_test.shape, y_test.shape)
+
+print("\nFraud rates:")
+print("Training:", y_train.mean())
+print("Validation:", y_validation.mean())
+print("Test:", y_test.mean())
+
+model_balanced.fit(X_train, y_train)
+
+validation_probabilities = model_balanced.predict_proba(
+    X_validation
+)[:, 1]
+
+precision_values, recall_values, thresholds = precision_recall_curve(
+    y_validation,
+    validation_probabilities,
+)
+
+f1_values = (
+        2
+        * precision_values[:-1]
+        * recall_values[:-1]
+        / (
+                precision_values[:-1]
+                + recall_values[:-1]
+                + 1e-10
+        )
+)
+
+best_index = np.argmax(f1_values)
+
+best_threshold = thresholds[best_index]
+
+print("Best validation threshold:", best_threshold)
+print("Validation precision:", precision_values[best_index])
+print("Validation recall:", recall_values[best_index])
+print("Validation F1:", f1_values[best_index])
+
+test_probabilities = model_balanced.predict_proba(
+    X_test
+)[:, 1]
+
+test_predictions = (
+        test_probabilities >= best_threshold
+)
+
+print("\nFINAL TEST RESULTS")
+
+print(
+    "Confusion matrix:"
+)
+print(
+    confusion_matrix(
+        y_test,
+        test_predictions
+    )
+)
+
+print(
+    "Accuracy:",
+    accuracy_score(
+        y_test,
+        test_predictions
+    )
+)
+
+print(
+    "Precision:",
+    precision_score(
+        y_test,
+        test_predictions,
+        zero_division=0,
+    )
+)
+
+print(
+    "Recall:",
+    recall_score(
+        y_test,
+        test_predictions
+    )
+)
+
+print(
+    "F1:",
+    f1_score(
+        y_test,
+        test_predictions
+    )
+)
+
+dummy_model = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        (
+            "classifier",
+            DummyClassifier(
+                strategy="most_frequent"
+            )
+        ),
+    ]
+)
+
+dummy_model.fit(X_train, y_train)
+
+dummy_predictions = dummy_model.predict(X_test)
+
+print("\nDUMMY MODEL")
+
+print("Confusion matrix:")
+print(
+    confusion_matrix(
+        y_test,
+        dummy_predictions
+    )
+)
+
+print(
+    "Accuracy:",
+    accuracy_score(
+        y_test,
+        dummy_predictions
+    )
+)
+
+print(
+    "Precision:",
+    precision_score(
+        y_test,
+        dummy_predictions,
+        zero_division=0,
+    )
+)
+
+print(
+    "Recall:",
+    recall_score(
+        y_test,
+        dummy_predictions
+    )
+)
+
+print(
+    "F1:",
+    f1_score(
+        y_test,
+        dummy_predictions
+    )
+)
+
+tree_model = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        (
+            "classifier",
+            DecisionTreeClassifier(
+                class_weight="balanced",
+                random_state=42,
+            ),
+        ),
+    ]
+)
+
+tree_model.fit(X_train, y_train)
+
+tree_predictions = tree_model.predict(X_validation)
+
+print("\nDECISION TREE - VALIDATION")
+
+print("Confusion matrix:")
+print(
+    confusion_matrix(
+        y_validation,
+        tree_predictions
+    )
+)
+
+print(
+    "Accuracy:",
+    accuracy_score(
+        y_validation,
+        tree_predictions
+    )
+)
+
+print(
+    "Precision:",
+    precision_score(
+        y_validation,
+        tree_predictions,
+        zero_division=0,
+    )
+)
+
+print(
+    "Recall:",
+    recall_score(
+        y_validation,
+        tree_predictions
+    )
+)
+
+print(
+    "F1:",
+    f1_score(
+        y_validation,
+        tree_predictions
+    )
+)
+
+tree_train_predictions = tree_model.predict(X_train)
+
+print("\nDECISION TREE - TRAINING")
+
+print(
+    "Accuracy:",
+    accuracy_score(
+        y_train,
+        tree_train_predictions
+    )
+)
+
+print(
+    "Precision:",
+    precision_score(
+        y_train,
+        tree_train_predictions,
+        zero_division=0,
+    )
+)
+
+print(
+    "Recall:",
+    recall_score(
+        y_train,
+        tree_train_predictions
+    )
+)
+
+print(
+    "F1:",
+    f1_score(
+        y_train,
+        tree_train_predictions
+    )
+)
+
+for depth in [2, 3, 5, 10, None]:
+    tree_model = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            (
+                "classifier",
+                DecisionTreeClassifier(
+                    max_depth=depth,
+                    class_weight="balanced",
+                    random_state=42,
+                ),
+            ),
+        ]
+    )
+
+    tree_model.fit(X_train, y_train)
+
+    train_predictions = tree_model.predict(X_train)
+    validation_predictions = tree_model.predict(X_validation)
+
+    print(f"\nMAX DEPTH: {depth}")
+
+    print(
+        "Training F1:",
+        f1_score(y_train, train_predictions)
+    )
+
+    print(
+        "Validation F1:",
+        f1_score(
+            y_validation,
+            validation_predictions
+        )
+    )
+
+    print(
+        "Validation precision:",
+        precision_score(
+            y_validation,
+            validation_predictions,
+            zero_division=0,
+        )
+    )
+
+    print(
+        "Validation recall:",
+        recall_score(
+            y_validation,
+            validation_predictions
+        )
+    )
