@@ -5,14 +5,21 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_curve
 from sklearn.dummy import DummyClassifier
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import average_precision_score, PrecisionRecallDisplay
+import matplotlib.pyplot as plt
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+import pandas as pd
 from numpy import array
 
+from fraud_ml.evaluate import evaluate_model
 from fraud_ml.generate_data import generate_fraud_data
+from fraud_ml.preprocessing import create_preprocessor
+from fraud_ml.train import create_model
 
 df = pd.DataFrame(
     {
@@ -266,16 +273,7 @@ categorical_features = [
     "transaction_type"
 ]
 
-preprocessor = ColumnTransformer(
-    transformers=[
-        (
-            "categorical",
-            OneHotEncoder(sparse_output=False),
-            categorical_features
-        )
-    ],
-    remainder="passthrough"
-)
+preprocessor = create_preprocessor()
 
 X_transformed = preprocessor.fit_transform(X)
 
@@ -349,21 +347,8 @@ numerical_features = [
     "amount",
     "age"
 ]
-preprocessor = ColumnTransformer(
-    transformers=[
-        (
-            "categorical",
-            OneHotEncoder(sparse_output=False),
-            categorical_features
-        ),
-        (
-            "numerical",
-            StandardScaler(),
-            numerical_features
-        )
-    ],
-    remainder="passthrough"
-)
+
+preprocessor = create_preprocessor()
 
 X_train_transformed = preprocessor.fit_transform(X_train)
 
@@ -489,23 +474,7 @@ numerical_features = [
     "age",
 ]
 
-preprocessor = ColumnTransformer(
-    transformers=[
-        (
-            "categorical",
-            OneHotEncoder(
-                handle_unknown="ignore"
-            ),
-            categorical_features,
-        ),
-        (
-            "numerical",
-            StandardScaler(),
-            numerical_features,
-        ),
-    ],
-    remainder="passthrough",
-)
+preprocessor = create_preprocessor()
 
 X = df[
     [
@@ -719,6 +688,35 @@ print("Validation:", y_validation.mean())
 print("Test:", y_test.mean())
 
 model_balanced.fit(X_train, y_train)
+
+feature_names = (
+    model_balanced
+    .named_steps["preprocessor"]
+    .get_feature_names_out()
+)
+
+coefficients = (
+    model_balanced
+    .named_steps["classifier"]
+    .coef_[0]
+)
+
+feature_importance = pd.DataFrame({
+    "feature": feature_names,
+    "coefficient": coefficients,
+})
+
+feature_importance["absolute_coefficient"] = (
+    feature_importance["coefficient"].abs()
+)
+
+feature_importance = feature_importance.sort_values(
+    "absolute_coefficient",
+    ascending=False,
+)
+
+print("\nLOGISTIC REGRESSION COEFFICIENTS")
+print(feature_importance.to_string(index=False))
 
 validation_probabilities = model_balanced.predict_proba(
     X_validation
@@ -1009,3 +1007,210 @@ for depth in [2, 3, 5, 10, None]:
             validation_predictions
         )
     )
+
+forest_model = Pipeline(
+    steps=[
+        ("preprocessor", create_preprocessor()),
+        (
+            "classifier",
+            RandomForestClassifier(
+                n_estimators=100,
+                class_weight="balanced",
+                random_state=42,
+            ),
+        ),
+    ]
+)
+
+forest_model.fit(X_train, y_train)
+
+forest_predictions = forest_model.predict(
+    X_validation
+)
+
+print("\nRANDOM FOREST - VALIDATION")
+
+print(
+    "Confusion matrix:"
+)
+print(
+    confusion_matrix(
+        y_validation,
+        forest_predictions
+    )
+)
+
+print(
+    "Accuracy:",
+    accuracy_score(
+        y_validation,
+        forest_predictions
+    )
+)
+
+print(
+    "Precision:",
+    precision_score(
+        y_validation,
+        forest_predictions,
+        zero_division=0,
+    )
+)
+
+print(
+    "Recall:",
+    recall_score(
+        y_validation,
+        forest_predictions
+    )
+)
+
+print(
+    "F1:",
+    f1_score(
+        y_validation,
+        forest_predictions
+    )
+)
+
+forest_probabilities = forest_model.predict_proba(
+    X_validation
+)[:, 1]
+
+for threshold in [0.1, 0.2, 0.3, 0.5]:
+    predictions = forest_probabilities >= threshold
+
+    print(f"\nThreshold: {threshold}")
+
+    print(
+        "Precision:",
+        precision_score(
+            y_validation,
+            predictions,
+            zero_division=0
+        )
+    )
+
+    print(
+        "Recall:",
+        recall_score(
+            y_validation,
+            predictions,
+            zero_division=0
+        )
+    )
+
+    print(
+        "F1:",
+        f1_score(
+            y_validation,
+            predictions,
+            zero_division=0
+        )
+    )
+
+logistic_probabilities = model_balanced.predict_proba(
+    X_validation
+)[:, 1]
+
+forest_probabilities = forest_model.predict_proba(
+    X_validation
+)[:, 1]
+
+print(
+    "Logistic Regression AP:",
+    average_precision_score(
+        y_validation,
+        logistic_probabilities
+    )
+)
+
+print(
+    "Random Forest AP:",
+    average_precision_score(
+        y_validation,
+        forest_probabilities
+    )
+)
+
+PrecisionRecallDisplay.from_predictions(
+    y_validation,
+    logistic_probabilities,
+    name="Logistic Regression"
+)
+
+PrecisionRecallDisplay.from_predictions(
+    y_validation,
+    forest_probabilities,
+    name="Random Forest",
+    ax=plt.gca()
+)
+
+plt.title("Precision-Recall Curves — Validation")
+plt.show()
+
+X_development = pd.concat(
+    [X_train, X_validation]
+)
+y_development = pd.concat(
+    [y_train, y_validation]
+)
+
+cv = StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42
+)
+
+logistic_cv_scores = cross_val_score(
+    model_balanced,
+    X_development,
+    y_development,
+    cv=cv,
+    scoring="average_precision"
+)
+
+forest_cv_scores = cross_val_score(
+    forest_model,
+    X_development,
+    y_development,
+    cv=cv,
+    scoring="average_precision"
+)
+
+print("Logistic Regression AP:", logistic_cv_scores)
+print("Logistic Regression mean:", logistic_cv_scores.mean())
+print("Logistic Regression std:", logistic_cv_scores.std())
+
+print("Random Forest AP:", forest_cv_scores)
+print("Random Forest mean:", forest_cv_scores.mean())
+print("Random Forest std:", forest_cv_scores.std())
+
+
+X_development = pd.concat(
+    [X_train, X_validation]
+)
+
+y_development = pd.concat(
+    [y_train, y_validation]
+)
+
+final_model = create_model()
+
+final_model.fit(
+    X_development,
+    y_development
+)
+
+final_threshold = 0.6717561057667615
+
+results = evaluate_model(
+    final_model,
+    X_test,
+    y_test,
+    threshold=final_threshold,
+)
+
+print("\nFINAL MODEL EVALUATION")
+for metric, value in results.items():
+    print(f"{metric}: {value}")
