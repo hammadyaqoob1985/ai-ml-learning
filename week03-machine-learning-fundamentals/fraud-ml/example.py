@@ -14,7 +14,8 @@ from sklearn.metrics import average_precision_score, PrecisionRecallDisplay
 import matplotlib.pyplot as plt
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 import pandas as pd
-from numpy import array
+from pathlib import Path
+from fraud_ml.predict import save_model
 
 from fraud_ml.evaluate import evaluate_model
 from fraud_ml.generate_data import generate_fraud_data
@@ -1203,6 +1204,16 @@ final_model.fit(
 )
 
 final_threshold = 0.6717561057667615
+
+model_path = Path("models/fraud_model.joblib")
+model_path.parent.mkdir(parents=True, exist_ok=True)
+
+save_model(
+    final_model,
+    final_threshold,
+    model_path,
+)
+
 
 results = evaluate_model(
     final_model,
